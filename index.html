@@ -42,7 +42,7 @@ button,input{font:inherit;color:inherit}
 .cams button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
 .cams button:hover,.tool:hover{border-color:var(--muted)}
 
-.telecard{position:absolute;right:16px;bottom:14px;width:330px;padding:12px;border-radius:12px;background:rgba(16,20,27,.9);border:1px solid var(--line);backdrop-filter:blur(6px)}
+.telecard{position:absolute;right:16px;bottom:14px;width:310px;padding:10px 12px;border-radius:12px;background:rgba(16,20,27,.9);border:1px solid var(--line);backdrop-filter:blur(6px)}
 .label{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .tele{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
 .tele .cell{display:flex;flex-direction:column;gap:5px;min-width:0}
@@ -58,9 +58,9 @@ button,input{font:inherit;color:inherit}
 .serial .t{color:#5d6a80}.serial .k{color:var(--accent)}.serial .e{color:var(--bad)}.serial .g{color:var(--ok)}
 
 /* phone */
-.side{width:440px;flex:none;display:grid;place-items:center;padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:radial-gradient(120% 80% at 50% 30%,#1d2533,#10141b 70%);border-left:1px solid var(--line);min-height:0}
-.phone{width:min(370px,100%);height:min(780px,100%);padding:11px;border-radius:52px;background:linear-gradient(145deg,#3a4150,#1a1e26);box-shadow:0 0 0 1.5px #555e6e inset,0 30px 60px rgba(0,0,0,.55),0 0 0 1px #0b0e13}
-.screen{height:100%;border-radius:42px;overflow:hidden;background:var(--phone-bg);display:flex;flex-direction:column;position:relative}
+.side{width:clamp(300px,27vw,410px);flex:none;display:grid;place-items:center;padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:radial-gradient(120% 80% at 50% 30%,#1d2533,#10141b 70%);border-left:1px solid var(--line);min-height:0}
+.phone{width:100%;max-width:360px;height:min(760px,100%);padding:9px;border-radius:44px;background:linear-gradient(145deg,#3a4150,#1a1e26);box-shadow:0 0 0 1.5px #555e6e inset,0 30px 60px rgba(0,0,0,.55),0 0 0 1px #0b0e13}
+.screen{height:100%;border-radius:36px;overflow:hidden;background:var(--phone-bg);display:flex;flex-direction:column;position:relative}
 .statusbar{display:flex;align-items:center;justify-content:space-between;padding:12px 26px 4px;font-family:var(--f-mono);font-size:12px;font-weight:600;color:var(--fg)}
 .island{width:96px;height:26px;border-radius:999px;background:#000}
 .sb-r{font-size:10.5px;color:var(--muted)}
@@ -113,7 +113,21 @@ form button:disabled{opacity:.5;cursor:default}
 @media (prefers-reduced-motion:reduce){.mic.on::after{animation:none}}
 .homebar{width:120px;height:5px;border-radius:3px;background:#6b7385;margin:6px auto 9px;flex:none}
 
-@media (max-width:1100px){.telecard{width:290px}.serial{height:70px}}
+@media (max-width:1100px){.telecard{width:270px}.serial{height:70px}}
+.tele-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.tele-top button{border:1px solid var(--line);background:var(--panel-2);border-radius:999px;padding:2px 10px;font-size:11px;cursor:pointer}
+.telecard.mini .tele,.telecard.mini .serial,.telecard.mini .ser-label{display:none}
+.telecard.mini .tele-top{margin-bottom:0}
+@media (min-width:861px){html,body{overflow:hidden}}
+@media (min-width:861px) and (max-height:780px){
+  .statusbar,.homebar{display:none}
+  .phone{padding:6px;border-radius:26px}.screen{border-radius:21px}
+  .apphead{padding:8px 14px}.avatar{width:32px;height:32px;font-size:17px;border-radius:10px}
+  .msgs{padding:10px 12px;gap:7px}.m{font-size:13px;padding:7px 11px}
+  form{padding-bottom:10px}
+  .serial{height:56px}.brand{font-size:22px}.state{margin-top:6px}
+}
+@media (min-width:861px) and (max-height:620px){.chips{display:none}.serial,.ser-label{display:none}.minibar{padding:5px 14px}}
 @media (max-width:860px){
   html,body{height:auto}
   .app{flex-direction:column;height:auto}
@@ -147,7 +161,8 @@ form button:disabled{opacity:.5;cursor:default}
         <button id="camTop" aria-pressed="false">มุมบน</button>
       </div>
     </div>
-    <div class="telecard">
+    <div class="telecard" id="telecard">
+      <div class="tele-top"><span class="label">ESP32 telemetry</span><button type="button" id="teleToggle" aria-expanded="true">ย่อ</button></div>
       <div class="tele">
         <div class="cell"><span class="label">IR array (5ch)</span><div class="ir" id="ir"></div></div>
         <div class="cell"><span class="label">Motor PWM</span>
@@ -159,7 +174,7 @@ form button:disabled{opacity:.5;cursor:default}
         <div class="cell"><span class="label">ตำแหน่ง</span><span class="val" id="pos">HOME</span></div>
         <div class="cell"><span class="label">แบตเตอรี่ 2S</span><span class="val" id="batt">7.86 V · 98%</span></div>
       </div>
-      <div class="label" style="margin-top:10px">Serial monitor · 115200</div>
+      <div class="label ser-label" style="margin-top:10px">Serial monitor · 115200</div>
       <div class="serial" id="serial" aria-label="Serial monitor" aria-live="off"></div>
     </div>
   </section>
@@ -242,7 +257,7 @@ const scene=new THREE.Scene(); scene.background=new THREE.Color(0x151a22); scene
 const camera=new THREE.PerspectiveCamera(42,1,0.05,100);
 camera.position.set(0,9.5,11.5);
 const controls=new THREE.OrbitControls(camera,renderer.domElement);
-controls.enableDamping=true; controls.maxPolarAngle=Math.PI*0.47; controls.minDistance=2; controls.maxDistance=26;
+controls.enableDamping=true; controls.maxPolarAngle=Math.PI*0.47; controls.minDistance=2; controls.maxDistance=34;
 scene.add(new THREE.HemisphereLight(0xdfe8ff,0x2a2f38,0.75));
 const sun=new THREE.DirectionalLight(0xffffff,0.85); sun.position.set(6,12,7); sun.castShadow=true;
 sun.shadow.mapSize.set(2048,2048); Object.assign(sun.shadow.camera,{left:-11,right:11,top:9,bottom:-9}); scene.add(sun);
@@ -544,13 +559,14 @@ function updateTele(){
 /* ---------------- Camera modes ---------------- */
 let camMode='wide'; const camBtns={wide:$('camWide'),follow:$('camFollow'),top:$('camTop')};
 function setCam(m){camMode=m;Object.entries(camBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',k===m));
-  if(m==='wide'){camera.position.set(0,9.5,11.5);controls.target.set(0,0,0)}
+  if(m==='wide'){const tv=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),th=tv*camera.aspect,d=Math.max(8.6/th,6/tv);camera.position.set(0,d*0.64,d*0.77);controls.target.set(0,0,0)}
   if(m==='top'){camera.position.set(0,17,0.01);controls.target.set(0,0,0)}
   if(m==='follow'){const p=R.group.position;controls.target.copy(p);camera.position.set(p.x+1.8,1.6,p.z+2.2)}}
 Object.entries(camBtns).forEach(([k,b])=>b.onclick=()=>setCam(k));
 
 /* ---------------- Loop ---------------- */
-function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();if(camMode==='wide')setCam('wide')}
+$('teleToggle').onclick=()=>{const c=$('telecard'),mini=c.classList.toggle('mini');$('teleToggle').textContent=mini?'ขยาย':'ย่อ';$('teleToggle').setAttribute('aria-expanded',!mini)};
 new ResizeObserver(resize).observe(stage); resize();
 let last=performance.now(), teleT=0;
 function frame(now){

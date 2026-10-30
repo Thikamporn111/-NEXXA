@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{color-scheme:dark;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,"Segoe UI",sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
+<title>Nexxa Line Robot</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans+Thai:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: 3D workcell fills the left, an ESP32 "console" rail on the right (stacks under the scene on phones). Single dark lab-console look. */
+:root{
+  --bg:#10141b; --panel:#161c26; --panel-2:#1c2431; --line:#283244;
+  --fg:#e7ebf2; --muted:#8c97ab; --accent:#f2a33a; --accent-ink:#1b1206;
+  --ok:#4cc38a; --phone-bg:#0f131a; --bad:#e5534b; --info:#5aa9e6;
+  --f-display:"Chakra Petch","IBM Plex Sans Thai",system-ui,sans-serif;
+  --f-body:"IBM Plex Sans Thai",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SFMono-Regular",Menlo,monospace;
+  color-scheme:dark;
+}
+html,body{height:100%;background:var(--bg);color:var(--fg)}
+body{font-family:var(--f-body);font-size:14px;line-height:1.5}
+*{box-sizing:border-box}
+button,input{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+.app{display:flex;height:100%;min-height:0}
+.stage-wrap{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
+.stage{position:relative;flex:1;min-height:0;background:#151a22;overflow:hidden}
+.stage canvas{display:block;width:100%;height:100%;touch-action:none}
+
+.hud{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:2px;pointer-events:none}
+.brand{font-family:var(--f-display);font-weight:700;font-size:28px;letter-spacing:.14em;line-height:1}
+.brand b{color:var(--accent)}
+.sub{font-family:var(--f-mono);font-size:11px;color:var(--muted);letter-spacing:.08em;text-transform:uppercase}
+.state{margin-top:10px;align-self:flex-start;display:inline-flex;align-items:center;gap:8px;padding:5px 10px;border-radius:999px;background:rgba(16,20,27,.78);border:1px solid var(--line);font-family:var(--f-mono);font-size:12px;letter-spacing:.06em}
+.state i{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 8px var(--ok)}
+.state[data-s="run"] i{background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.state[data-s="err"] i{background:var(--bad);box-shadow:0 0 8px var(--bad)}
+.cams{position:absolute;bottom:14px;left:max(16px,env(safe-area-inset-left,0px));display:flex;gap:6px;flex-wrap:wrap}
+.cams button,.tool{border:1px solid var(--line);background:rgba(22,28,38,.88);padding:6px 11px;border-radius:8px;cursor:pointer;font-size:12.5px}
+.cams button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+.cams button:hover,.tool:hover{border-color:var(--muted)}
+
+.telecard{position:absolute;right:16px;bottom:14px;width:330px;padding:12px;border-radius:12px;background:rgba(16,20,27,.9);border:1px solid var(--line);backdrop-filter:blur(6px)}
+.label{font-family:var(--f-mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.tele{display:grid;grid-template-columns:1fr 1fr;gap:10px 16px}
+.tele .cell{display:flex;flex-direction:column;gap:5px;min-width:0}
+.val{font-family:var(--f-mono);font-size:12.5px;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ir{display:flex;gap:5px;align-items:center}
+.ir span{width:18px;height:18px;border-radius:4px;background:var(--panel-2);border:1px solid var(--line);font-family:var(--f-mono);font-size:9.5px;display:grid;place-items:center;color:var(--muted)}
+.ir span.on{background:#3a1512;border-color:var(--bad);color:#ffb3ad;box-shadow:0 0 6px rgba(229,83,75,.6)}
+.bars{display:flex;flex-direction:column;gap:4px}
+.bar{display:grid;grid-template-columns:12px 1fr 32px;gap:6px;align-items:center;font-family:var(--f-mono);font-size:11px;font-variant-numeric:tabular-nums;color:var(--muted)}
+.bar div{height:6px;border-radius:3px;background:var(--panel-2);position:relative;overflow:hidden}
+.bar div i{position:absolute;top:0;bottom:0;left:50%;background:var(--info)}
+.serial{height:96px;overflow:auto;margin-top:5px;padding:7px 9px;background:#0a0d12;border:1px solid var(--line);border-radius:8px;font-family:var(--f-mono);font-size:10.5px;line-height:1.55;color:#a9b4c6;white-space:pre-wrap;word-break:break-word}
+.serial .t{color:#5d6a80}.serial .k{color:var(--accent)}.serial .e{color:var(--bad)}.serial .g{color:var(--ok)}
+
+/* phone */
+.side{width:440px;flex:none;display:grid;place-items:center;padding-block:20px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));background:radial-gradient(120% 80% at 50% 30%,#1d2533,#10141b 70%);border-left:1px solid var(--line);min-height:0}
+.phone{width:min(370px,100%);height:min(780px,100%);padding:11px;border-radius:52px;background:linear-gradient(145deg,#3a4150,#1a1e26);box-shadow:0 0 0 1.5px #555e6e inset,0 30px 60px rgba(0,0,0,.55),0 0 0 1px #0b0e13}
+.screen{height:100%;border-radius:42px;overflow:hidden;background:var(--phone-bg);display:flex;flex-direction:column;position:relative}
+.statusbar{display:flex;align-items:center;justify-content:space-between;padding:12px 26px 4px;font-family:var(--f-mono);font-size:12px;font-weight:600;color:var(--fg)}
+.island{width:96px;height:26px;border-radius:999px;background:#000}
+.sb-r{font-size:10.5px;color:var(--muted)}
+.apphead{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line)}
+.avatar{width:38px;height:38px;flex:none;border-radius:12px;display:grid;place-items:center;background:var(--accent);color:var(--accent-ink);font-family:var(--f-display);font-weight:700;font-size:20px}
+.who{display:flex;flex-direction:column;min-width:0;flex:1;line-height:1.25}
+.who strong{font-family:var(--f-display);font-size:16px;letter-spacing:.04em}
+.who>span{font-size:11px;color:var(--ok);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#wifi{font-family:var(--f-mono);color:var(--muted)}
+.mode{flex:none;font-family:var(--f-mono);font-size:10px;padding:2px 7px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.mode.ai{color:var(--ok);border-color:rgba(76,195,138,.5)}
+.minibar{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 16px;font-size:12px;color:var(--muted);background:var(--panel)}
+.minibar b{color:var(--fg);font-weight:500}
+.head-tools{display:flex;gap:6px}
+.tool{padding:3px 9px;font-size:11.5px;background:var(--panel-2);border-radius:999px}
+.tool[aria-pressed="true"]{border-color:var(--accent);color:var(--accent)}
+.msgs{flex:1;min-height:0;overflow:auto;display:flex;flex-direction:column;gap:9px;padding:12px 14px}
+.m{max-width:86%;padding:8px 12px;border-radius:18px;min-width:0;word-break:break-word;font-size:13.5px}
+.m.u{align-self:flex-end;background:var(--accent);color:var(--accent-ink);border-bottom-right-radius:6px}
+.m.a{align-self:flex-start;background:var(--panel-2);border:1px solid var(--line);border-bottom-left-radius:6px}
+.m.s{align-self:center;max-width:100%;background:none;padding:0 4px;font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.m.s.ok{color:var(--ok)}.m.s.err{color:var(--bad)}
+.plan{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px}
+.plan span{font-family:var(--f-mono);font-size:10px;padding:1px 6px;border-radius:4px;background:#0a0d12;border:1px solid var(--line);color:var(--accent)}
+.typing{display:inline-flex;gap:4px}.typing i{width:6px;height:6px;border-radius:50%;background:var(--muted);animation:b 1s infinite}
+.typing i:nth-child(2){animation-delay:.15s}.typing i:nth-child(3){animation-delay:.3s}
+@keyframes b{0%,100%{opacity:.25}50%{opacity:1}}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:0 14px 8px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chips button{flex:none;border:1px solid var(--line);background:var(--panel-2);border-radius:999px;padding:5px 11px;font-size:12px;cursor:pointer;white-space:nowrap}
+.chips button:hover{border-color:var(--accent)}
+form{display:flex;gap:8px;padding:0 12px 6px}
+form input{flex:1;min-width:0;background:var(--panel-2);border:1px solid var(--line);border-radius:999px;padding:10px 14px}
+form input::placeholder{color:#6b768a}
+form button{border:0;background:var(--accent);color:var(--accent-ink);font-weight:600;border-radius:999px;padding:0 16px;cursor:pointer}
+form button:disabled{opacity:.5;cursor:default}
+.mic{flex:none;width:42px;height:42px;border-radius:50%;border:1px solid var(--line);background:var(--panel-2);display:grid;place-items:center;cursor:pointer;position:relative}
+.mic svg{width:18px;height:18px;fill:none;stroke:var(--fg);stroke-width:2;stroke-linecap:round}
+.mic.on{background:var(--bad);border-color:var(--bad)}
+.mic.on::after{content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid var(--bad);animation:ring 1.2s infinite}
+@keyframes ring{0%{opacity:.9;transform:scale(.9)}100%{opacity:0;transform:scale(1.25)}}
+.sheet{position:absolute;inset:auto 0 0 0;z-index:5;background:var(--panel);border-top:1px solid var(--line);border-radius:20px 20px 0 0;padding:18px 16px calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:10px;box-shadow:0 -20px 40px rgba(0,0,0,.45)}
+.sheet h3{margin:0;font-family:var(--f-display);font-size:16px}
+.sheet p{margin:0;font-size:12px;color:var(--muted)}
+.sheet label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:4px}
+.sheet input{background:#0c1016;border:1px solid var(--line);border-radius:10px;padding:9px 11px;font-family:var(--f-mono);font-size:12px}
+.sheet .row{display:flex;gap:8px;justify-content:flex-end}
+.sheet .row button{border:1px solid var(--line);background:var(--panel-2);border-radius:999px;padding:7px 14px;cursor:pointer}
+.sheet .row button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:600}
+@media (prefers-reduced-motion:reduce){.mic.on::after{animation:none}}
+.homebar{width:120px;height:5px;border-radius:3px;background:#6b7385;margin:6px auto 9px;flex:none}
+
+@media (max-width:1100px){.telecard{width:290px}.serial{height:70px}}
+@media (max-width:860px){
+  html,body{height:auto}
+  .app{flex-direction:column;height:auto}
+  .stage-wrap{flex:none}
+  .stage{flex:none;height:52vh;min-height:300px}
+  .telecard{position:static;width:auto;border-radius:0;border-width:1px 0 0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .side{width:100%;border-left:0;padding:0;background:none;display:block}
+  .phone{width:100%;height:auto;padding:0;border-radius:0;background:none;box-shadow:none}
+  .screen{border-radius:0;height:auto;border-top:1px solid var(--line)}
+  .statusbar,.homebar{display:none}
+  .msgs{min-height:260px;max-height:60vh}
+  form{padding-bottom:calc(10px + env(safe-area-inset-bottom,0px))}
+  .brand{font-size:22px}
+}
+@media (prefers-reduced-motion:reduce){.typing i{animation:none;opacity:.7}}
+</style>
+
+</head>
+<body>
+<div class="app">
+  <section class="stage-wrap">
+    <div class="stage" id="stage" aria-label="แบบจำลองสามมิติของสนามหุ่นยนต์ Nexxa">
+      <div class="hud">
+        <div class="brand">NEX<b>X</b>A</div>
+        <div class="sub">ESP32 · 2WD line follower · phone screen</div>
+        <div class="state" id="statePill" data-s="idle"><i></i><span id="stateText">IDLE @ HOME</span></div>
+      </div>
+      <div class="cams" role="group" aria-label="มุมกล้อง">
+        <button id="camWide" aria-pressed="true">มุมกว้าง</button>
+        <button id="camFollow" aria-pressed="false">ติดตามหุ่น</button>
+        <button id="camTop" aria-pressed="false">มุมบน</button>
+      </div>
+    </div>
+    <div class="telecard">
+      <div class="tele">
+        <div class="cell"><span class="label">IR array (5ch)</span><div class="ir" id="ir"></div></div>
+        <div class="cell"><span class="label">Motor PWM</span>
+          <div class="bars">
+            <div class="bar"><span>L</span><div><i id="mL"></i></div><span id="mLv">0</span></div>
+            <div class="bar"><span>R</span><div><i id="mR"></i></div><span id="mRv">0</span></div>
+          </div>
+        </div>
+        <div class="cell"><span class="label">ตำแหน่ง</span><span class="val" id="pos">HOME</span></div>
+        <div class="cell"><span class="label">แบตเตอรี่ 2S</span><span class="val" id="batt">7.86 V · 98%</span></div>
+      </div>
+      <div class="label" style="margin-top:10px">Serial monitor · 115200</div>
+      <div class="serial" id="serial" aria-label="Serial monitor" aria-live="off"></div>
+    </div>
+  </section>
+
+  <aside class="side">
+    <div class="phone">
+      <div class="screen">
+        <div class="statusbar"><span id="clock">20:55</span><span class="island"></span><span class="sb-r">Wi-Fi ▮▮▮ 86%</span></div>
+        <header class="apphead">
+          <div class="avatar" aria-hidden="true">N</div>
+          <div class="who"><strong>Nexxa</strong><span id="conn">เชื่อมต่อ ESP32 · <span id="wifi">-52 dBm · 0</span></span></div>
+          <span class="mode" id="mode">กำลังเชื่อม AI…</span>
+        </header>
+        <div class="minibar">
+          <span>ถือของ <b id="carry">—</b></span>
+          <div class="head-tools">
+            <button class="tool" id="voice" aria-pressed="false" title="อ่านคำตอบออกเสียง">อ่านออกเสียง</button>
+            <button class="tool" id="aiset" title="ตั้งค่าการเชื่อมต่อ AI">AI</button>
+            <button class="tool" id="reset" title="วางของกลับจุดเดิม และส่งหุ่นกลับ HOME">รีเซ็ต</button>
+          </div>
+        </div>
+        <div class="msgs" id="msgs" aria-live="polite"></div>
+        <div class="chips" id="chips"></div>
+        <form id="form" autocomplete="off">
+          <input id="input" placeholder="สั่งงาน Nexxa…" aria-label="ข้อความถึง Nexxa">
+          <button id="mic" class="mic" type="button" aria-label="กดแล้วพูดคำสั่ง" aria-pressed="false"><svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+          <button id="send" type="submit" aria-label="ส่ง">ส่ง</button>
+        </form>
+        <div class="sheet" id="sheet" hidden>
+          <h3>เชื่อมต่อ AI</h3>
+          <p id="sheetNote">เมื่อเปิดหน้านี้บน claude.ai จะใช้ Claude ได้เลย ถ้าเปิดจากเว็บอื่น (เช่น GitHub Pages) ให้ใส่ Anthropic API key ของคุณ คีย์จะเก็บไว้ในเบราว์เซอร์เครื่องนี้เท่านั้น</p>
+          <label>Anthropic API key<input id="apiKey" type="password" placeholder="sk-ant-…" autocomplete="off"></label>
+          <label>โมเดล<input id="apiModel" placeholder="claude-haiku-5-5"></label>
+          <div class="row"><button type="button" id="keyClear">ลบคีย์</button><button type="button" id="keyClose">ปิด</button><button type="button" class="primary" id="keySave">บันทึก</button></div>
+        </div>
+        <div class="homebar" aria-hidden="true"></div>
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script>
+(() => {
+/* ---------------- Map ---------------- */
+const NODES={HOME:[0,5],J0:[0,2],J1:[-3.5,2],J2:[3.5,2],J3:[-3.5,-2],J4:[3.5,-2],J5:[0,-2],A:[-6.5,2],B:[-6.5,-2],C:[6.5,2],D:[6.5,-2],DROP:[0,-5]};
+const EDGES=[['HOME','J0'],['J0','J1'],['J0','J2'],['J0','J5'],['J1','J3'],['J2','J4'],['J3','J5'],['J5','J4'],['J1','A'],['J3','B'],['J2','C'],['J4','D'],['J5','DROP']];
+const ENDS=['HOME','A','B','C','D','DROP'];
+const CAP={HOME:0,DROP:4,A:1,B:1,C:1,D:1};
+const adj={}; for(const k in NODES) adj[k]=[];
+EDGES.forEach(([a,b])=>{adj[a].push(b);adj[b].push(a)});
+const P=n=>new THREE.Vector3(NODES[n][0],0,NODES[n][1]);
+const d2=(a,b)=>Math.hypot(NODES[a][0]-NODES[b][0],NODES[a][1]-NODES[b][1]);
+function route(from,to){
+  const dist={},prev={},q=new Set(Object.keys(NODES));
+  for(const k of q) dist[k]=Infinity; dist[from]=0;
+  while(q.size){let u=null;for(const k of q) if(u===null||dist[k]<dist[u]) u=k; q.delete(u); if(u===to) break;
+    for(const v of adj[u]){const nd=dist[u]+d2(u,v); if(nd<dist[v]){dist[v]=nd;prev[v]=u}}}
+  const path=[to]; while(path[0]!==from){ if(!prev[path[0]]) return null; path.unshift(prev[path[0]]) } return path;
+}
+const endDir=n=>{const nb=adj[n][0];return P(n).sub(P(nb)).normalize()};
+
+const ITEMS=[
+ {id:'red',name:'กล่องสีแดง',alias:['กล่องสีแดง','กล่องแดง','สีแดง','แดง','กล่อง','red box','red'],color:0xd9483b,shape:'box',home:'A'},
+ {id:'water',name:'ขวดน้ำ',alias:['ขวดน้ำ','ขวด','water','bottle'],color:0x3a86d9,shape:'cyl',home:'B'},
+ {id:'batt',name:'แบตเตอรี่',alias:['แบตเตอรี่','แบต','battery'],color:0xf0b429,shape:'batt',home:'C'},
+ {id:'sensor',name:'บอร์ดเซนเซอร์',alias:['บอร์ดเซนเซอร์','บอร์ด','sensor board','board'],color:0x3fae6a,shape:'board',home:'D'},
+];
+const slots={}; ENDS.forEach(n=>slots[n]=[]);
+
+/* ---------------- Three setup ---------------- */
+const stage=document.getElementById('stage');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true; renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+renderer.outputEncoding=THREE.sRGBEncoding;
+stage.prepend(renderer.domElement);
+const scene=new THREE.Scene(); scene.background=new THREE.Color(0x151a22); scene.fog=new THREE.Fog(0x151a22,18,34);
+const camera=new THREE.PerspectiveCamera(42,1,0.05,100);
+camera.position.set(0,9.5,11.5);
+const controls=new THREE.OrbitControls(camera,renderer.domElement);
+controls.enableDamping=true; controls.maxPolarAngle=Math.PI*0.47; controls.minDistance=2; controls.maxDistance=26;
+scene.add(new THREE.HemisphereLight(0xdfe8ff,0x2a2f38,0.75));
+const sun=new THREE.DirectionalLight(0xffffff,0.85); sun.position.set(6,12,7); sun.castShadow=true;
+sun.shadow.mapSize.set(2048,2048); Object.assign(sun.shadow.camera,{left:-11,right:11,top:9,bottom:-9}); scene.add(sun);
+
+// floor with tile grid
+const fc=document.createElement('canvas'); fc.width=fc.height=256; const fx=fc.getContext('2d');
+fx.fillStyle='#d9dbd4'; fx.fillRect(0,0,256,256); fx.strokeStyle='#c4c7bf'; fx.lineWidth=2; fx.strokeRect(0,0,256,256);
+for(let i=0;i<900;i++){fx.fillStyle=`rgba(120,120,110,${Math.random()*0.06})`;fx.fillRect(Math.random()*256,Math.random()*256,2,2)}
+const ftex=new THREE.CanvasTexture(fc); ftex.wrapS=ftex.wrapT=THREE.RepeatWrapping; ftex.repeat.set(16,12); ftex.encoding=THREE.sRGBEncoding;
+const floor=new THREE.Mesh(new THREE.PlaneGeometry(16,12),new THREE.MeshStandardMaterial({map:ftex,roughness:.92}));
+floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+const rim=new THREE.Mesh(new THREE.BoxGeometry(16.3,0.12,12.3),new THREE.MeshStandardMaterial({color:0x2b313b,roughness:.8}));
+rim.position.y=-0.065; scene.add(rim);
+
+// tape lines
+const tapeMat=new THREE.MeshStandardMaterial({color:0x111214,roughness:.55});
+EDGES.forEach(([a,b])=>{const A=P(a),B=P(b),len=A.distanceTo(B);
+  const m=new THREE.Mesh(new THREE.BoxGeometry(len+0.1,0.006,0.1),tapeMat);
+  m.position.copy(A).add(B).multiplyScalar(.5); m.position.y=0.003; m.rotation.y=-Math.atan2(B.z-A.z,B.x-A.x); m.receiveShadow=true; scene.add(m)});
+// stop bars at ends
+ENDS.forEach(n=>{const d=endDir(n),p=P(n);const m=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.007,0.08),tapeMat);
+  m.position.set(p.x,0.004,p.z); m.rotation.y=Math.atan2(d.x,d.z); scene.add(m)});
+
+const LABEL_FONT='600 40px "Chakra Petch","IBM Plex Sans Thai",sans-serif';
+function label(title,sub,accent){
+  const c=document.createElement('canvas'); c.width=320;c.height=120; const x=c.getContext('2d');
+  x.fillStyle='rgba(16,20,27,.86)'; roundRect(x,4,4,312,112,18); x.fill();
+  x.fillStyle=accent||'#f2a33a'; roundRect(x,4,4,10,112,4); x.fill();
+  x.fillStyle='#e7ebf2'; x.font=LABEL_FONT; x.fillText(title,30,54);
+  x.fillStyle='#a6b0c2'; x.font='500 26px "IBM Plex Sans Thai",sans-serif'; x.fillText(sub||'',30,94);
+  const t=new THREE.CanvasTexture(c); t.encoding=THREE.sRGBEncoding;
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:t,depthWrite:false})); s.scale.set(1.25,0.47,1); s.userData.canvas=c; return s;
+}
+function roundRect(x,a,b,w,h,r){x.beginPath();x.moveTo(a+r,b);x.arcTo(a+w,b,a+w,b+h,r);x.arcTo(a+w,b+h,a,b+h,r);x.arcTo(a,b+h,a,b,r);x.arcTo(a,b,a+w,b,r);x.closePath()}
+
+// shelves
+const shelf={}; const labels={};
+const LABEL_COL=n=>n==='HOME'?'#5aa9e6':n==='DROP'?'#4cc38a':'#f2a33a';
+ENDS.forEach(n=>{
+  if(n==='HOME'){ // just a marked parking spot on the floor, no dock
+    const c=P(n), d=endDir(n), tape=new THREE.MeshStandardMaterial({color:0x2f6fb0,roughness:.6});
+    const g=new THREE.Group(); g.position.copy(c); scene.add(g);
+    [[0,0.36,0.76,0.05],[0,-0.36,0.76,0.05],[0.36,0,0.05,0.76],[-0.36,0,0.05,0.76]].forEach(([x,z,w,dd])=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,0.006,dd),tape);m.position.set(x,0.004,z);m.receiveShadow=true;g.add(m)});
+    shelf[n]={center:c,top:0,dir:d,big:false};
+    const lb=label(n,'',LABEL_COL(n)); lb.position.set(c.x-0.9,0.7,c.z); scene.add(lb); labels[n]=lb; return;
+  }
+  const big=CAP[n]>1, d=endDir(n), size=big?0.46:0.24, off=big?0.62:0.5;
+  const c=P(n).add(d.clone().multiplyScalar(off));
+  const g=new THREE.Group(); g.position.copy(c); g.rotation.y=Math.atan2(d.x,d.z); scene.add(g);
+  const plat=new THREE.Mesh(new THREE.BoxGeometry(size,0.06,size),new THREE.MeshStandardMaterial({color:n==='HOME'?0x3a3f4a:n==='DROP'?0x5a4a2a:0x8a6a45,roughness:.7}));
+  plat.position.y=0.03; plat.castShadow=plat.receiveShadow=true; g.add(plat);
+  const post=new THREE.Mesh(new THREE.BoxGeometry(0.04,0.55,0.04),new THREE.MeshStandardMaterial({color:0x6b7280}));
+  post.position.set(0,0.3,size/2+0.04); post.castShadow=true; g.add(post);
+  shelf[n]={center:c,top:0.06,dir:d,big};
+  const lb=label(n,'',LABEL_COL(n)); lb.position.set(c.x,0.95,c.z); scene.add(lb); labels[n]=lb;
+});
+const PILE=[[-0.16,-0.1],[-0.055,-0.1],[0.055,-0.1],[0.16,-0.1]];
+function slotPos(n,i){const s=shelf[n];if(!s.big) return new THREE.Vector3(s.center.x,s.top,s.center.z);
+  const [a,b]=PILE[i%4]; const side=new THREE.Vector3(s.dir.z,0,-s.dir.x);
+  return s.center.clone().add(side.multiplyScalar(a)).add(s.dir.clone().multiplyScalar(b)).setY(s.top)}
+function refreshLabels(){ENDS.forEach(n=>{const lb=labels[n],c=lb.userData.canvas,x=c.getContext('2d');
+  const sub=n==='HOME'?'จุดจอดรอชาร์จ':n==='DROP'?`จุดส่ง · ${slots[n].length} ชิ้น`:(slots[n][0]?slots[n][0].name:'ชั้นว่าง');
+  x.clearRect(0,0,c.width,c.height); x.fillStyle='rgba(16,20,27,.86)'; roundRect(x,4,4,312,112,18); x.fill();
+  x.fillStyle=LABEL_COL(n); roundRect(x,4,4,10,112,4); x.fill();
+  x.fillStyle='#e7ebf2'; x.font=LABEL_FONT; x.fillText(n==='HOME'||n==='DROP'?n:'จุด '+n,30,54);
+  x.fillStyle='#a6b0c2'; x.font='500 26px "IBM Plex Sans Thai",sans-serif'; x.fillText(sub,30,94);
+  lb.material.map.needsUpdate=true})}
+
+// items
+function makeItem(it){
+  const mat=new THREE.MeshStandardMaterial({color:it.color,roughness:.5}); let g, h;
+  if(it.shape==='box'){g=new THREE.BoxGeometry(0.17,0.15,0.17);h=0.15}
+  else if(it.shape==='cyl'){g=new THREE.CylinderGeometry(0.06,0.06,0.2,20);h=0.2}
+  else if(it.shape==='batt'){g=new THREE.BoxGeometry(0.15,0.09,0.12);h=0.09}
+  else {g=new THREE.BoxGeometry(0.18,0.03,0.13);h=0.03}
+  g.translate(0,h/2,0);
+  const m=new THREE.Mesh(g,mat); m.castShadow=true;
+  if(it.shape==='cyl'){const cap=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.04,14),new THREE.MeshStandardMaterial({color:0xffffff}));cap.position.y=0.22;m.add(cap)}
+  if(it.shape==='batt'){const t=new THREE.Mesh(new THREE.BoxGeometry(0.15,0.02,0.04),new THREE.MeshStandardMaterial({color:0x222222}));t.position.y=0.1;m.add(t)}
+  if(it.shape==='board'){for(let i=0;i<3;i++){const c=new THREE.Mesh(new THREE.BoxGeometry(0.03,0.02,0.03),new THREE.MeshStandardMaterial({color:0x111111}));c.position.set(-0.05+i*0.05,0.04,0);m.add(c)}}
+  it.mesh=m; it.h=h; scene.add(m);
+}
+ITEMS.forEach(it=>{makeItem(it);slots[it.home].push(it);it.mesh.position.copy(slotPos(it.home,0))});
+
+/* ---------------- Robot model (original acrylic 2WD + phone screen) ---------------- */
+const R={group:new THREE.Group(),wheels:[],ir:[],node:'HOME',heading:0,carrying:null,plan:[],planDone:null,wob:0,batt:98,state:'IDLE',face:'happy',look:0};
+const ARM_L=0.36;
+const faceCanvas=document.createElement('canvas'); faceCanvas.width=512; faceCanvas.height=248;
+const faceTex=new THREE.CanvasTexture(faceCanvas); faceTex.encoding=THREE.sRGBEncoding;
+(function build(){
+  const g=R.group; scene.add(g);
+  const acrylic=new THREE.MeshStandardMaterial({color:0x2f3a4a,roughness:.25,metalness:.1,transparent:true,opacity:.92});
+  const dark=new THREE.MeshStandardMaterial({color:0x1d2129,roughness:.6});
+  const metal=new THREE.MeshStandardMaterial({color:0xb9bec7,metalness:.85,roughness:.3});
+  const amber=new THREE.MeshStandardMaterial({color:0xf2a33a,roughness:.4});
+  const box=(w,h,d,m,x,y,z,p=g)=>{const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);o.castShadow=true;p.add(o);return o};
+  box(0.44,0.018,0.6,acrylic,0,0.12,0.02);
+  box(0.40,0.016,0.48,acrylic,0,0.25,-0.02);
+  [[-.17,.2],[.17,.2],[-.17,-.22],[.17,-.22]].forEach(([x,z])=>box(0.015,0.13,0.015,metal,x,0.185,z));
+  [-1,1].forEach(s=>{box(0.08,0.06,0.16,new THREE.MeshStandardMaterial({color:0xe5c04a,roughness:.5}),s*0.15,0.08,-0.1);
+    const wg=new THREE.CylinderGeometry(0.11,0.11,0.05,28); wg.rotateZ(Math.PI/2);
+    const w=new THREE.Mesh(wg,new THREE.MeshStandardMaterial({color:0x15171b,roughness:.9})); w.position.set(s*0.255,0.11,-0.1); w.castShadow=true;
+    w.add(new THREE.Mesh(new THREE.BoxGeometry(0.052,0.12,0.03),amber));
+    g.add(w); R.wheels.push({m:w,side:s})});
+  const cast=new THREE.Mesh(new THREE.SphereGeometry(0.035,16,12),metal); cast.position.set(0,0.035,0.24); g.add(cast);
+  [-0.035,0.035].forEach(x=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.2,16),new THREE.MeshStandardMaterial({color:0x2f8fd9,roughness:.4}));b.rotation.x=Math.PI/2;b.position.set(x,0.16,0.05);g.add(b)});
+  box(0.12,0.025,0.12,new THREE.MeshStandardMaterial({color:0xb3262b}),0,0.27,-0.16);
+  box(0.06,0.05,0.03,dark,0,0.3,-0.16);
+  box(0.13,0.012,0.24,new THREE.MeshStandardMaterial({color:0x1f2a44,roughness:.5}),0,0.264,0.06);
+  box(0.09,0.012,0.1,metal,0,0.276,0.12);
+  const ec=document.createElement('canvas');ec.width=256;ec.height=128;const ex=ec.getContext('2d');ex.fillStyle='#b9bec7';ex.fillRect(0,0,256,128);
+  ex.fillStyle='#2b2f36';ex.font='bold 40px monospace';ex.fillText('ESP32',40,62);ex.font='22px monospace';ex.fillText('WROOM-32',44,100);
+  const lt=new THREE.Mesh(new THREE.PlaneGeometry(0.085,0.042),new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(ec)}));
+  lt.rotation.x=-Math.PI/2; lt.rotation.z=Math.PI; lt.position.set(0,0.2831,0.12); g.add(lt);
+  R.led=new THREE.Mesh(new THREE.SphereGeometry(0.008,8,8),new THREE.MeshBasicMaterial({color:0x4aa8ff})); R.led.position.set(0.045,0.275,0.0); g.add(R.led);
+  box(0.18,0.06,0.012,new THREE.MeshStandardMaterial({color:0x1d5fa8}),0,0.17,0.32);
+  [-0.045,0.045].forEach(x=>{const e=new THREE.Mesh(new THREE.CylinderGeometry(0.03,0.03,0.035,18),metal);e.rotation.x=Math.PI/2;e.position.set(x,0.17,0.34);g.add(e)});
+  box(0.36,0.012,0.05,new THREE.MeshStandardMaterial({color:0x1d5fa8}),0,0.04,0.32);
+  for(let i=0;i<5;i++){const l=new THREE.Mesh(new THREE.BoxGeometry(0.02,0.012,0.02),new THREE.MeshStandardMaterial({color:0x3a0d0b,emissive:0x000000}));
+    l.position.set((i-2)*0.07,0.052,0.32);g.add(l);R.ir.push(l)}
+  box(0.22,0.012,0.18,new THREE.MeshStandardMaterial({color:0x3b4352}),0,0.262,-0.17);
+  [-0.11,0.11].forEach(x=>box(0.012,0.04,0.18,amber,x,0.28,-0.17));
+  R.cargo=new THREE.Object3D(); R.cargo.position.set(0,0.268,-0.17); g.add(R.cargo);
+  box(0.05,0.05,0.04,dark,-0.17,0.29,0.18);
+  R.armBase=new THREE.Group(); R.armBase.position.set(-0.17,0.33,0.18); g.add(R.armBase);
+  R.arm=new THREE.Group(); R.armBase.add(R.arm);
+  const beam=new THREE.Mesh(new THREE.BoxGeometry(0.035,0.025,ARM_L),amber); beam.position.z=ARM_L/2; beam.castShadow=true; R.arm.add(beam);
+  R.fingers=[-1,1].map(s=>{const f=new THREE.Mesh(new THREE.BoxGeometry(0.012,0.07,0.04),metal);f.position.set(s*0.045,-0.03,ARM_L);R.arm.add(f);return f});
+  R.tip=new THREE.Object3D(); R.tip.position.set(0,-0.03,ARM_L); R.arm.add(R.tip);
+  // phone screen as the face, centered on a mast
+  box(0.03,0.27,0.03,metal,0,0.39,-0.05);
+  box(0.06,0.02,0.06,dark,0,0.265,-0.05);
+  R.mount=new THREE.Group(); R.mount.position.set(0,0.6,-0.05); g.add(R.mount);
+  box(0.06,0.04,0.03,dark,0,-0.07,-0.015,R.mount);
+  R.phone=new THREE.Group(); R.phone.position.set(0,0,0.005); R.phone.rotation.x=-0.1; R.mount.add(R.phone);
+  box(0.29,0.145,0.012,new THREE.MeshStandardMaterial({color:0x15181d,roughness:.3,metalness:.4}),0,0,0,R.phone);
+  [-1,1].forEach(s=>box(0.012,0.155,0.02,dark,s*0.148,0,0,R.phone)); // clamp jaws
+  const scr=new THREE.Mesh(new THREE.PlaneGeometry(0.276,0.132),new THREE.MeshBasicMaterial({map:faceTex})); scr.position.z=0.0065; R.phone.add(scr);
+})();
+const STOW=-2.2, REACH=0.32, YAW=0.5; R.arm.rotation.x=STOW;
+const armPose=k=>{R.arm.rotation.x=lerp(STOW,REACH,k);R.armBase.rotation.y=lerp(0,YAW,k)};
+// face on the phone screen
+let blinkT=2.5;
+function drawFace(){
+  const c=faceCanvas, x=c.getContext('2d'), W=c.width, H=c.height;
+  x.fillStyle='#06090d'; x.fillRect(0,0,W,H);
+  x.strokeStyle='#5fe0ff'; x.fillStyle='#5fe0ff'; x.lineCap='round'; x.lineWidth=22; x.shadowColor='#35d3ff'; x.shadowBlur=26;
+  const ox=R.look*34, blink=blinkT<0.14;
+  [-1,1].forEach(s=>{const cx=W/2+s*96+ox, cy=H/2+8;
+    x.beginPath();
+    if(blink){x.moveTo(cx-38,cy);x.lineTo(cx+38,cy)}
+    else if(R.face==='focus'){x.moveTo(cx-34,cy-4);x.lineTo(cx+34,cy-4)}
+    else if(R.face==='think'){x.arc(cx,cy+10,36,Math.PI*1.15,Math.PI*1.85)}
+    else if(R.face==='sad'){x.arc(cx,cy-30,38,Math.PI*0.2,Math.PI*0.8)}
+    else if(R.face==='listen'){x.arc(cx,cy,30,0,Math.PI*2)}
+    else {x.arc(cx,cy+18,42,Math.PI*1.12,Math.PI*1.88)}
+    x.stroke()});
+  if(R.face==='think'){x.shadowBlur=14;[0,1,2].forEach(i=>{x.globalAlpha=0.35+0.65*((Math.floor(clock*3)%3)===i);x.beginPath();x.arc(W/2-24+i*24,H-40,6,0,7);x.fill()});x.globalAlpha=1}
+  x.shadowBlur=0; faceTex.needsUpdate=true;
+}
+const hs=endDir('HOME'); R.heading=Math.atan2(-hs.x,-hs.z); R.group.position.copy(P('HOME'));
+
+/* ---------------- Motion ---------------- */
+const tweens=[];
+const tween=(dur,fn)=>new Promise(res=>tweens.push({t:0,dur,fn,res}));
+const ease=k=>k<.5?2*k*k:1-Math.pow(-2*k+2,2)/2;
+const lerp=(a,b,k)=>a+(b-a)*k;
+const angDiff=(a,b)=>{let d=a-b;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;return d};
+const SPEED=1.5, TURN=2.6;
+let motors={L:0,R:0}, irBits=[0,0,1,0,0], clock=0;
+
+function drive(to){
+  const path=route(R.node,to); if(!path) throw new Error('หาเส้นทางไม่ได้');
+  if(path.length===1) return Promise.resolve();
+  serial(`<span class="k">[NAV]</span> PATH ${path.join(' → ')}`);
+  for(let i=1;i<path.length;i++){
+    const a=path[i-1],b=path[i],A=P(a),B=P(b);
+    R.plan.push({type:'turn',target:Math.atan2(B.x-A.x,B.z-A.z),at:a});
+    R.plan.push({type:'move',from:a,to:b,A,B,len:A.distanceTo(B),t:0});
+  }
+  return new Promise((res,rej)=>{R.planDone={res,rej}});
+}
+function stepRobot(dt){
+  const s=R.plan[0];
+  if(!s){motors.L=motors.R=0; return}
+  if(s.type==='turn'){
+    const diff=angDiff(s.target,R.heading);
+    if(!s.logged){s.logged=true; if(Math.abs(diff)>0.2){const dir=Math.abs(Math.abs(diff)-Math.PI)<0.3?'U-TURN':diff>0?'TURN LEFT':'TURN RIGHT';
+      serial(`<span class="k">[NAV]</span> ${s.at.startsWith('J')?'JUNCTION '+s.at:s.at} → ${dir}`)}}
+    const st=TURN*dt;
+    if(Math.abs(diff)<=st){R.heading=s.target;R.plan.shift()} else R.heading+=Math.sign(diff)*st;
+    const sg=Math.sign(diff)||1; motors.L=-150*sg; motors.R=150*sg;
+    R.wheels.forEach(w=>w.m.rotation.x+=w.side*sg*st*0.255/0.11);
+    irBits=sg>0?[0,1,1,0,0]:[0,0,1,1,0];
+  } else {
+    s.t+=SPEED*dt/s.len; const k=Math.min(s.t,1);
+    R.group.position.lerpVectors(s.A,s.B,k);
+    R.wob=Math.sin(clock*7.3)*0.022*Math.sin(Math.PI*k);
+    const perp=new THREE.Vector3(s.B.z-s.A.z,0,-(s.B.x-s.A.x)).normalize();
+    R.group.position.addScaledVector(perp,R.wob);
+    R.wheels.forEach(w=>w.m.rotation.x+=SPEED*dt/0.11);
+    motors.L=185+R.wob*1600; motors.R=185-R.wob*1600;
+    irBits=R.wob>0.012?[0,0,1,1,0]:R.wob<-0.012?[0,1,1,0,0]:[0,0,1,0,0];
+    if(s.to.startsWith('J')&&k>0.94) irBits=[1,1,1,1,1];
+    R.batt=Math.max(5,R.batt-dt*0.06);
+    if(s.t>=1){R.group.position.copy(s.B);R.node=s.to;R.plan.shift();
+      if(!s.to.startsWith('J')) serial(`<span class="g">[NAV]</span> ARRIVED ${s.to} (stop bar)`)}
+  }
+  if(!R.plan.length&&R.planDone){const p=R.planDone;R.planDone=null;motors.L=motors.R=0;irBits=[0,0,1,0,0];p.res()}
+}
+
+/* ---------------- Gripper actions ---------------- */
+const tmp=new THREE.Vector3();
+const hangPos=it=>R.tip.getWorldPosition(tmp).clone().add(new THREE.Vector3(0,-it.h*0.85,0));
+const claw=k=>R.fingers.forEach((f,i)=>f.position.x=(i?1:-1)*lerp(0.045,0.026,k));
+async function doPick(){
+  const n=R.node;
+  if(R.carrying) throw new Error(`มือไม่ว่าง กำลังถือ${R.carrying.name}อยู่`);
+  if(!ENDS.includes(n)||!slots[n].length) throw new Error(`ที่ ${n} ไม่มีของให้หยิบ`);
+  const it=slots[n].pop(); R.state='PICK'; R.face='focus'; serial(`<span class="k">[ARM]</span> SERVO → REACH · pick "${it.id}" @ ${n}`);
+  await tween(0.75,k=>armPose(ease(k)));
+  const s0=it.mesh.position.clone();
+  await tween(0.4,k=>{it.mesh.position.lerpVectors(s0,hangPos(it),ease(k));claw(k)});
+  await tween(0.85,k=>{armPose(1-ease(k));it.mesh.position.copy(hangPos(it))});
+  const s1=it.mesh.position.clone(), c=new THREE.Vector3();
+  await tween(0.35,k=>{R.cargo.getWorldPosition(c);it.mesh.position.lerpVectors(s1,c,ease(k));claw(1-k)});
+  R.cargo.attach(it.mesh); it.mesh.position.set(0,0,0); it.mesh.rotation.set(0,0,0);
+  R.carrying=it; refreshLabels(); serial(`<span class="g">[ARM]</span> GRIP OK · load ${it.name}`); R.face='happy';
+  sys(`หยิบ${it.name}ที่ ${n} แล้ว`,'ok');
+}
+async function doPlace(){
+  const n=R.node, it=R.carrying;
+  if(!it) throw new Error('ไม่ได้ถือของอยู่');
+  if(!ENDS.includes(n)||!CAP[n]) throw new Error(n==='HOME'?'HOME เป็นแค่จุดจอดรอชาร์จ วางของไม่ได้':'วางของได้เฉพาะที่จุด A–D หรือ DROP');
+  if(slots[n].length>=CAP[n]) throw new Error(`ชั้นที่ ${n} เต็มแล้ว`);
+  R.state='PLACE'; R.face='focus'; const target=slotPos(n,slots[n].length); serial(`<span class="k">[ARM]</span> SERVO → REACH · place @ ${n}`);
+  scene.attach(it.mesh); it.mesh.rotation.set(0,0,0);
+  const s0=it.mesh.position.clone();
+  await tween(0.35,k=>{it.mesh.position.lerpVectors(s0,hangPos(it),ease(k));claw(k)});
+  await tween(0.85,k=>{armPose(ease(k));it.mesh.position.copy(hangPos(it))});
+  const s1=it.mesh.position.clone();
+  await tween(0.4,k=>{it.mesh.position.lerpVectors(s1,target,ease(k));claw(1-k)});
+  slots[n].push(it); R.carrying=null; refreshLabels();
+  await tween(0.7,k=>armPose(1-ease(k)));
+  serial(`<span class="g">[ARM]</span> RELEASE OK`); R.face='happy'; sys(`วาง${it.name}ที่ ${n} แล้ว`,'ok');
+}
+
+/* ---------------- Command queue ---------------- */
+let queue=[], running=false;
+async function runQueue(){
+  if(running) return; running=true;
+  while(queue.length){
+    const a=queue.shift();
+    try{
+      if(a.do==='goto'){R.state='GOTO '+a.to; R.face='focus'; serial(`<span class="k">[CMD]</span> GOTO ${a.to}`); await drive(a.to)}
+      else if(a.do==='pick'){serial(`<span class="k">[CMD]</span> PICK`); await doPick()}
+      else if(a.do==='place'){serial(`<span class="k">[CMD]</span> PLACE`); await doPlace()}
+    }catch(e){
+      if(e&&e.message!=='stopped'){serial(`<span class="e">[ERR]</span> ${e.message}`); sys('ทำต่อไม่ได้: '+e.message,'err'); errFlash=3; R.face='sad'; setTimeout(()=>{if(R.face==='sad')R.face='happy'},3000)}
+      queue=[];
+    }
+  }
+  running=false; R.state='IDLE'; if(R.face==='focus') R.face='happy';
+}
+function enqueue(actions){
+  const stop=actions.some(a=>a.do==='stop');
+  if(stop){queue=[]; if(R.plan.length) R.plan=R.plan.slice(0,1); serial('<span class="e">[CMD]</span> STOP'); }
+  actions.filter(a=>a.do!=='stop').forEach(a=>queue.push(a)); runQueue();
+}
+function sanitize(acts){
+  if(!Array.isArray(acts)) return [];
+  return acts.map(a=>({do:String(a.do||a.action||'').toLowerCase(),to:String(a.to||'').toUpperCase()}))
+    .filter(a=>['pick','place','stop'].includes(a.do)||(a.do==='goto'&&ENDS.includes(a.to)))
+    .map(a=>a.do==='goto'?{do:'goto',to:a.to}:{do:a.do}).slice(0,24);
+}
+
+/* ---------------- UI: telemetry ---------------- */
+const $=id=>document.getElementById(id);
+const irEl=$('ir'); for(let i=0;i<5;i++){const s=document.createElement('span');s.textContent='S'+(i+1);irEl.appendChild(s)}
+const serEl=$('serial'); const t0=performance.now();
+function serial(html){const t=((performance.now()-t0)/1000).toFixed(1).padStart(6,' ');
+  const d=document.createElement('div'); d.innerHTML=`<span class="t">${t}s</span> ${html}`; serEl.appendChild(d);
+  while(serEl.children.length>80) serEl.firstChild.remove(); serEl.scrollTop=serEl.scrollHeight}
+let errFlash=0;
+function where(){const s=R.plan[0]; return s?(s.type==='move'?`${s.from} → ${s.to}`:`${s.at} (หมุน)`):R.node}
+function updateTele(){
+  [...irEl.children].forEach((s,i)=>s.classList.toggle('on',!!irBits[i]));
+  R.ir.forEach((l,i)=>l.material.emissive.setHex(irBits[i]?0xff3020:0x000000));
+  [['mL','mLv',motors.L],['mR','mRv',motors.R]].forEach(([b,v,x])=>{const el=$(b),p=Math.min(Math.abs(x)/255,1)*50;
+    el.style.left=x>=0?'50%':(50-p)+'%'; el.style.width=p+'%'; el.style.background=x>=0?'var(--info)':'var(--accent)'; $(v).textContent=Math.round(x)});
+  $('pos').textContent=where();
+  $('carry').textContent=R.carrying?R.carrying.name:'—';
+  const v=(6.6+R.batt/100*1.8).toFixed(2); $('batt').textContent=`${v} V · ${Math.round(R.batt)}%`;
+  $('wifi').textContent=`${-50-Math.round(Math.random()*4)} dBm · ${queue.length+(running?1:0)}`;
+  const busy=running; const pill=$('statePill'); pill.dataset.s=errFlash>0?'err':busy?'run':'idle';
+  $('stateText').textContent=busy?`${R.state} · ${where()}`:`IDLE @ ${R.node}${R.carrying?' · '+R.carrying.id:''}`;
+}
+
+/* ---------------- Camera modes ---------------- */
+let camMode='wide'; const camBtns={wide:$('camWide'),follow:$('camFollow'),top:$('camTop')};
+function setCam(m){camMode=m;Object.entries(camBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',k===m));
+  if(m==='wide'){camera.position.set(0,9.5,11.5);controls.target.set(0,0,0)}
+  if(m==='top'){camera.position.set(0,17,0.01);controls.target.set(0,0,0)}
+  if(m==='follow'){const p=R.group.position;controls.target.copy(p);camera.position.set(p.x+1.8,1.6,p.z+2.2)}}
+Object.entries(camBtns).forEach(([k,b])=>b.onclick=()=>setCam(k));
+
+/* ---------------- Loop ---------------- */
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix()}
+new ResizeObserver(resize).observe(stage); resize();
+let last=performance.now(), teleT=0;
+function frame(now){
+  const dt=Math.min((now-last)/1000,0.05); last=now; clock+=dt;
+  stepRobot(dt);
+  for(let i=tweens.length-1;i>=0;i--){const tw=tweens[i];tw.t+=dt;const k=Math.min(tw.t/tw.dur,1);tw.fn(k);if(k>=1){tweens.splice(i,1);tw.res()}}
+  R.group.rotation.y=R.heading;
+  const tl=Math.max(-1,Math.min(1,(motors.R-motors.L)/300)); R.look=lerp(R.look,tl,Math.min(1,dt*4));
+  R.mount.rotation.y=lerp(R.mount.rotation.y,R.look*0.3,Math.min(1,dt*4));
+  R.led.material.color.setHex((Math.floor(clock*(running?6:1.5))%2)?0x4aa8ff:0x0e2a4a);
+  blinkT-=dt; if(blinkT<0) blinkT=2.5+Math.random()*3;
+  if(R.node==='HOME'&&!running) R.batt=Math.min(100,R.batt+dt*0.5);
+  if(camMode==='follow'){const p=R.group.position, d=p.clone().sub(controls.target);controls.target.add(d.multiplyScalar(0.08));camera.position.add(d)}
+  errFlash=Math.max(0,errFlash-dt);
+  controls.update(); renderer.render(scene,camera);
+  teleT+=dt; if(teleT>0.1){teleT=0;updateTele();drawFace()}
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+(document.fonts?Promise.race([document.fonts.ready,new Promise(r=>setTimeout(r,1500))]):Promise.resolve()).then(refreshLabels);
+refreshLabels();
+serial('<span class="g">[BOOT]</span> ESP32 rev3 · 240 MHz · Wi-Fi OK');
+serial('<span class="g">[LINK]</span> phone screen ↔ ESP32 · BLE connected');
+serial('<span class="g">[BOOT]</span> IR array calibrated · PID kp=0.8 ki=0 kd=2.1');
+
+/* ---------------- Chat ---------------- */
+const clk=()=>{const d=new Date();$('clock').textContent=d.toLocaleTimeString('th-TH',{hour:'2-digit',minute:'2-digit',hour12:false})};clk();setInterval(clk,20000);
+const msgs=$('msgs'), input=$('input'), sendBtn=$('send'); const history=[];
+function bubble(cls,text,plan){const d=document.createElement('div');d.className='m '+cls;d.textContent=text;
+  if(plan&&plan.length){const p=document.createElement('div');p.className='plan';
+    plan.forEach(a=>{const s=document.createElement('span');s.textContent=a.do==='goto'?'GOTO '+a.to:a.do.toUpperCase();p.appendChild(s)});d.appendChild(p)}
+  msgs.appendChild(d); msgs.scrollTop=msgs.scrollHeight; return d}
+function sys(text,kind){bubble('s '+(kind||''),text)}
+function typing(){const d=document.createElement('div');d.className='m a';d.innerHTML='<span class="typing"><i></i><i></i><i></i></span>';msgs.appendChild(d);msgs.scrollTop=msgs.scrollHeight;return d}
+
+let voiceOn=false; $('voice').onclick=()=>{voiceOn=!voiceOn;$('voice').setAttribute('aria-pressed',voiceOn);try{if(!voiceOn)speechSynthesis.cancel()}catch(e){}};
+function speak(t,force){if(!voiceOn&&!force) return;try{const u=new SpeechSynthesisUtterance(t);u.lang='th-TH';u.rate=1.05;speechSynthesis.cancel();speechSynthesis.speak(u)}catch(e){}}
+
+function stateText(){
+  return [`หุ่นอยู่ที่: ${R.plan.length?'กำลังเคลื่อนที่ '+where():R.node}`,
+    `กำลังถือ: ${R.carrying?R.carrying.name:'ไม่มี'}`,
+    `คิวงานค้าง: ${queue.length} คำสั่ง`,
+    `ของบนชั้น: `+ENDS.map(n=>`${n}=[${slots[n].map(i=>i.name).join(', ')||'ว่าง'}]`).join(' '),
+    `แบตเตอรี่: ${Math.round(R.batt)}%`].join('\n');
+}
+const SYS=`คุณคือ "Nexxa" หุ่นยนต์เดินตามเส้น (line follower) 2 ล้อขับเคลื่อน แชสซีอะคริลิก 2 ชั้น ล้อขับ 2 ล้อ + ล้อลูกบอล สมองคือ ESP32 ไดรเวอร์มอเตอร์ L298N มีเซนเซอร์ IR 5 ช่องใต้ตัว เซนเซอร์อัลตราโซนิกด้านหน้า แขนเซอร์โวสั้น 1 ข้างทางขวาพร้อมก้ามคีบ ถาดบรรทุกด้านหลัง (ครั้งละ 1 ชิ้น) และมือถือติดตรงกลางเป็นหน้าตาของหุ่นและรัน AI คุมความเร็วด้วย PID
+สนามเป็นเทปดำบนพื้นขาว มีจุดปลายทาง: HOME (แค่จุดจอดรอชาร์จบนพื้น ไม่มีแท่นชาร์จ วางของที่นี่ไม่ได้ เวลาจอดที่นี่คนจะมาเสียบชาร์จให้), A, B, C, D (ชั้นวางของ จุดละ 1 ชิ้น), DROP (จุดส่งของ วางได้ 4 ชิ้น) ทางแยกภายในชื่อ J0-J5 (ไม่ต้องสั่งไปทางแยก ระบบหาเส้นทางสั้นสุดเอง)
+คำสั่งที่ส่งให้หุ่นได้:
+{"do":"goto","to":"HOME|A|B|C|D|DROP"}
+{"do":"pick"}  หยิบของที่จุดปัจจุบัน (ต้องมือว่างและที่จุดนั้นมีของ)
+{"do":"place"} วางของที่จุดปัจจุบัน (ต้องถือของ และชั้นไม่เต็ม)
+{"do":"stop"}  หยุดและล้างคิว
+กฎ: ต้อง goto ไปที่จุดก่อน pick/place เสมอ ถ้าสั่งหลายชิ้นให้วางแผนไป-กลับทีละชิ้น ถ้าไม่ระบุจุดส่งให้ส่งที่ DROP ถ้าผู้ใช้ให้เอาของไปวางที่ HOME ให้บอกว่าวางไม่ได้และเสนอ DROP แทน ถ้าผู้ใช้แค่คุยหรือถาม ให้ actions เป็น [] ห้ามสั่งงานที่ผู้ใช้ไม่ได้ขอ
+คุณเป็นผู้ช่วย AI ที่คุยเรื่องทั่วไปได้ด้วย ถ้าผู้ใช้ถามคำถามทั่วไป (ความรู้ วิทยาศาสตร์ การบ้าน การเขียนโปรแกรม ESP32/Arduino เรื่องในชีวิตประจำวัน) ให้ตอบถูกต้องและเป็นประโยชน์ ถ้าไม่แน่ใจให้บอกตรงๆ
+ตอบเป็นภาษาเดียวกับผู้ใช้ (ปกติภาษาไทย) น้ำเสียงเป็นมิตร คำตอบจะถูกอ่านออกเสียง จึงเขียนเป็นประโยคพูดธรรมดา ไม่ใช้ markdown หรือสัญลักษณ์ ปกติ 1-3 ประโยค คำถามที่ต้องอธิบายตอบได้ถึง 6 ประโยค ใช้คำลงท้าย "ครับ"
+ตอบกลับเป็น JSON อย่างเดียวรูปแบบ {"reply":"...","actions":[...]} ห้ามมีข้อความอื่นนอก JSON`;
+
+// AI backends, in order: Claude inside claude.ai → your own Anthropic API key → offline command parser
+let sample=null;
+const store={get(k){try{return localStorage.getItem(k)||''}catch(e){return ''}},set(k,v){try{v?localStorage.setItem(k,v):localStorage.removeItem(k)}catch(e){}}};
+let apiKey=store.get('nexxa.apiKey'), apiModel=store.get('nexxa.model')||'claude-haiku-5-5';
+const modeEl=$('mode');
+function aiMode(){return sample?'claude':apiKey?'api':'off'}
+function refreshMode(){const m=aiMode();modeEl.textContent=m==='claude'?'AI · Claude':m==='api'?'AI · API':'โหมดออฟไลน์';modeEl.classList.toggle('ai',m!=='off');
+  modeEl.title=m==='off'?'ยังไม่ได้เชื่อม AI กดปุ่ม AI เพื่อใส่ API key':'เชื่อม AI แล้ว ถามได้ทุกเรื่อง'}
+(async()=>{try{if(window.claude&&window.claude.use){sample=await window.claude.use('sample')}}catch(e){sample=null}refreshMode()})();
+refreshMode();
+
+function parseReply(text){
+  const m=(text||'').match(/\{[\s\S]*\}/);
+  if(!m) return {reply:(text||'').trim()||'รับทราบครับ',actions:[]};
+  const j=JSON.parse(m[0]); return {reply:String(j.reply||'รับทราบครับ'),actions:sanitize(j.actions)};
+}
+async function askAI(text){
+  const state=`สถานะตอนนี้:\n${stateText()}`;
+  if(sample){
+    const convo=history.slice(0,-1).slice(-10).map(h=>(h.role==='user'?'ผู้ใช้: ':'Nexxa: ')+h.content).join('\n');
+    const prompt=`${SYS}\n\n${state}\n\nบทสนทนาก่อนหน้า:\n${convo||'(ยังไม่มี)'}\n\nข้อความใหม่จากผู้ใช้: ${text}\n\nตอบเป็น JSON เท่านั้น`;
+    const r=await sample(prompt,{cache:false,modelTier:'quick'});
+    return parseReply(r.text);
+  }
+  let prev=history.slice(0,-1).slice(-10); while(prev.length&&prev[0].role!=='user') prev.shift();
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+    body:JSON.stringify({model:apiModel,max_tokens:700,system:SYS,messages:[...prev,{role:'user',content:`${state}\n\nข้อความจากผู้ใช้: ${text}`}]})});
+  if(!res.ok){const e=new Error('api '+res.status);e.status=res.status;throw e}
+  const j=await res.json(); return parseReply((j.content||[]).map(c=>c.text||'').join(''));
+}
+
+// settings sheet
+const sheet=$('sheet');
+$('aiset').onclick=()=>{$('apiKey').value=apiKey;$('apiModel').value=apiModel;sheet.hidden=false;$('apiKey').focus()};
+$('keyClose').onclick=()=>sheet.hidden=true;
+$('keySave').onclick=()=>{apiKey=$('apiKey').value.trim();apiModel=$('apiModel').value.trim()||'claude-haiku-5-5';store.set('nexxa.apiKey',apiKey);store.set('nexxa.model',apiModel);sheet.hidden=true;refreshMode();sys(apiKey?'บันทึก API key แล้ว':'ยังไม่ได้ใส่ API key',apiKey?'ok':'')};
+$('keyClear').onclick=()=>{apiKey='';store.set('nexxa.apiKey','');$('apiKey').value='';refreshMode();sys('ลบ API key แล้ว')};
+
+/* offline parser */
+function itemLoc(it){for(const n of ENDS) if(slots[n].includes(it)) return n; return null}
+function localParse(raw){
+  const t=raw.toLowerCase();
+  if(/หยุด|stop|เบรก|พอแล้ว|ยกเลิก/.test(t)) return {reply:'หยุดแล้วครับ จะจอดที่ทางแยกถัดไป',actions:[{do:'stop'}]};
+  const men=[];
+  for(const m of t.matchAll(/(?<![a-z])([abcd])(?![a-z])/g)) men.push({i:m.index,node:m[1].toUpperCase()});
+  for(const m of t.matchAll(/drop|ดรอป|จุดส่ง/g)) men.push({i:m.index,node:'DROP'});
+  for(const m of t.matchAll(/home|บ้าน|ฐาน|จุดจอด|ชาร์จ/g)) men.push({i:m.index,node:'HOME'});
+  const used=new Set();
+  ITEMS.forEach(it=>{for(const a of it.alias){const i=t.indexOf(a);if(i>=0&&!used.has(it.id)){used.add(it.id);men.push({i,item:it});break}}});
+  men.sort((a,b)=>a.i-b.i);
+  const pickW=/หยิบ|ไปเอา|เอา|pick|ยก|รับ|ขน|เก็บ/.test(t), placeW=/ส่ง|วาง|place|มาไว้|ไว้ที่|deliver/.test(t);
+  if(/ถืออะไร|สถานะ|อยู่ไหน|อยู่ที่ไหน|status|แบต/.test(t)&&!pickW&&!/ไป/.test(t))
+    return {reply:`ตอนนี้ผมอยู่ที่ ${R.plan.length?where():R.node} ${R.carrying?'กำลังถือ'+R.carrying.name:'มือว่างอยู่'} แบตเหลือ ${Math.round(R.batt)}% และมีงานค้างในคิว ${queue.length} คำสั่งครับ`,actions:[]};
+  const sources=[],dests=[];
+  men.forEach(m=>{
+    if(m.item){const l=itemLoc(m.item); if(l&&l!=='DROP'&&l!=='HOME'&&!sources.includes(l)) sources.push(l); else if(l&&!sources.includes(l)) sources.push(l)}
+    else if(['A','B','C','D'].includes(m.node)&&pickW&&slots[m.node].length&&!sources.includes(m.node)&&!dests.length) sources.push(m.node);
+    else dests.push(m.node);
+  });
+  if(pickW&&sources.length){
+    const dest=dests[dests.length-1]||'DROP', acts=[];
+    if(R.carrying) acts.push({do:'goto',to:dest},{do:'place'});
+    sources.forEach(s=>acts.push({do:'goto',to:s},{do:'pick'},{do:'goto',to:dest},{do:'place'}));
+    const names=sources.map(s=>slots[s][slots[s].length-1]?.name||s).join(' และ ');
+    return {reply:`รับทราบครับ จะไปหยิบ${names}ที่ ${sources.join(', ')} แล้วนำไปวางที่ ${dest}`,actions:acts};
+  }
+  if(pickW&&!sources.length&&men.length) return {reply:'จุดที่บอกไม่มีของให้หยิบแล้วครับ ลองดูป้ายเหนือชั้นวางว่าของอยู่ที่ไหน',actions:[]};
+  if(placeW&&R.carrying){const dest=dests[dests.length-1]||'DROP';return {reply:`จะนำ${R.carrying.name}ไปวางที่ ${dest} ครับ`,actions:[{do:'goto',to:dest},{do:'place'}]}}
+  if(dests.length){const d=dests[dests.length-1];return {reply:`กำลังวิ่งตามเส้นไปที่ ${d} ครับ`,actions:[{do:'goto',to:d}]}}
+  if(/สวัสดี|hello|hi|หวัดดี/.test(t)) return {reply:'สวัสดีครับ ผม Nexxa หุ่นเดินตามเส้นจาก ESP32 สั่งให้ผมไปหยิบของที่จุด A–D แล้วส่งที่ DROP ได้เลยครับ',actions:[]};
+  if(/ทำงาน|ยังไง|อย่างไร|อธิบาย|esp32|pid|เซนเซอร์/.test(t)) return {reply:'มือถือบนตัวผมรัน AI และส่งคำสั่งไปยัง ESP32 ผ่าน BLE ผมใช้เซนเซอร์ IR 5 ช่องอ่านเส้นเทปดำ ESP32 คำนวณ PID เพื่อปรับความเร็วล้อซ้ายขวาให้อยู่กลางเส้น เมื่อเซนเซอร์เห็นดำครบ 5 ช่องคือถึงทางแยก ผมจะเลี้ยวตามเส้นทางสั้นที่สุดที่วางแผนไว้ครับ',actions:[]};
+  return {reply:'ตอนนี้ผมอยู่โหมดออฟไลน์ เลยตอบได้แค่คำสั่งหุ่นครับ ถ้าอยากถามเรื่องทั่วไป กดปุ่ม AI แล้วใส่ API key ก่อน หรือสั่งเช่น "ไปหยิบขวดน้ำที่ B มาส่งที่ DROP"',actions:[]};
+}
+
+async function handle(text,byVoice){
+  bubble('u',text); history.push({role:'user',content:text});
+  sendBtn.disabled=true; const tp=typing(); R.face='think'; let res;
+  try{ res=aiMode()!=='off'?await askAI(text):localParse(text) }
+  catch(e){
+    if(e&&e.code==='not_granted'){sample=null;refreshMode()}
+    if(e&&(e.status===401||e.status===403)){sys('API key ใช้ไม่ได้ กดปุ่ม AI เพื่อแก้ไข','err')}
+    else if(aiMode()==='api'){sys('ติดต่อ AI ไม่ได้ ใช้ตัวแปลคำสั่งแทน','err')}
+    res=localParse(text);
+  }
+  tp.remove(); sendBtn.disabled=false; if(R.face==='think') R.face=running?'focus':'happy';
+  bubble('a',res.reply,res.actions); history.push({role:'assistant',content:res.reply}); speak(res.reply,byVoice);
+  if(res.actions.length) enqueue(res.actions);
+}
+
+/* voice input (Web Speech API) */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition; const micBtn=$('mic'); let rec=null, listening=false;
+function setMic(on){listening=on;micBtn.classList.toggle('on',on);micBtn.setAttribute('aria-pressed',on);input.placeholder=on?'กำลังฟัง… พูดได้เลย':'สั่งงาน Nexxa…';
+  if(on) R.face='listen'; else if(R.face==='listen') R.face=running?'focus':'happy'}
+micBtn.onclick=()=>{
+  if(!SR){sys('เบราว์เซอร์นี้ไม่รองรับการสั่งด้วยเสียง ลองใช้ Chrome หรือ Edge','err');return}
+  if(listening){try{rec.stop()}catch(e){}return}
+  try{speechSynthesis.cancel()}catch(e){}
+  rec=new SR(); rec.lang='th-TH'; rec.interimResults=true; rec.continuous=false; let finalText='';
+  rec.onresult=e=>{let interim='';for(let i=e.resultIndex;i<e.results.length;i++){const r=e.results[i];if(r.isFinal) finalText+=r[0].transcript; else interim+=r[0].transcript}input.value=finalText+interim};
+  rec.onerror=e=>{setMic(false);
+    if(e.error==='not-allowed'||e.error==='service-not-allowed') sys('ใช้ไมโครโฟนไม่ได้ ต้องกดอนุญาตไมค์ (บน claude.ai ใช้ไมค์ไม่ได้ ให้เปิดจากเว็บ GitHub Pages หรือ localhost)','err');
+    else if(e.error==='no-speech') sys('ไม่ได้ยินเสียง ลองกดแล้วพูดอีกครั้งครับ');
+    else if(e.error!=='aborted') sys('ฟังเสียงไม่สำเร็จ ('+e.error+')','err')};
+  rec.onend=()=>{setMic(false);const v=finalText.trim();if(v){input.value='';handle(v,true)}};
+  try{rec.start();setMic(true)}catch(e){setMic(false);sys('เริ่มฟังเสียงไม่ได้','err')}
+};
+$('form').addEventListener('submit',e=>{e.preventDefault();const v=input.value.trim();if(!v)return;input.value='';handle(v)});
+['ไปหยิบกล่องสีแดงที่ A มาส่งที่ DROP','หยิบของจุด C กับ D ไปไว้ที่ DROP','ตอนนี้ถืออะไรอยู่?','Nexxa เดินตามเส้นยังไง?','ทำไมท้องฟ้าเป็นสีฟ้า?','กลับบ้าน','หยุด'].forEach(c=>{
+  const b=document.createElement('button');b.type='button';b.textContent=c;b.onclick=()=>handle(c);$('chips').appendChild(b)});
+$('reset').onclick=()=>{
+  if(running){sys('รอให้หุ่นทำงานเสร็จก่อน หรือสั่ง "หยุด" ครับ','err');return}
+  ENDS.forEach(n=>slots[n]=[]);
+  ITEMS.forEach(it=>{scene.attach(it.mesh);it.mesh.rotation.set(0,0,0);slots[it.home].push(it);it.mesh.position.copy(slotPos(it.home,0))});
+  R.carrying=null; R.node='HOME'; R.group.position.copy(P('HOME')); R.heading=Math.atan2(-hs.x,-hs.z); armPose(0); claw(0); R.face='happy';
+  refreshLabels(); serial('<span class="g">[SYS]</span> field reset'); sys('รีเซ็ตสนามแล้ว','ok');
+};
+bubble('a','สวัสดีครับ ผม Nexxa หุ่นยนต์เดินตามเส้นที่มี ESP32 เป็นสมอง บอกผมได้เลยว่าจะให้ไปหยิบอะไรที่จุดไหน แล้วเอาไปส่งที่ไหนครับ');
+})();
+</script>
+
+</body>
+</html>

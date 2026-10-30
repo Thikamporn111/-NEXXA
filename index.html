@@ -27,7 +27,7 @@ button,input{font:inherit;color:inherit}
 .app{display:flex;height:100%;min-height:0}
 .stage-wrap{position:relative;flex:1;min-width:0;display:flex;flex-direction:column}
 .stage{position:relative;flex:1;min-height:0;background:#151a22;overflow:hidden}
-.stage canvas{display:block;width:100%;height:100%;touch-action:none}
+.stage canvas{position:absolute;inset:0;display:block;width:100%!important;height:100%!important;touch-action:none}
 
 .hud{position:absolute;top:calc(14px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:2px;pointer-events:none}
 .brand{font-family:var(--f-display);font-weight:700;font-size:28px;letter-spacing:.14em;line-height:1}
@@ -565,9 +565,9 @@ function setCam(m){camMode=m;Object.entries(camBtns).forEach(([k,b])=>b.setAttri
 Object.entries(camBtns).forEach(([k,b])=>b.onclick=()=>setCam(k));
 
 /* ---------------- Loop ---------------- */
-function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();if(camMode==='wide')setCam('wide')}
+function resize(){const w=stage.clientWidth,h=stage.clientHeight;if(!w||!h)return;renderer.setPixelRatio(Math.min(devicePixelRatio,2));renderer.setSize(w,h,false);camera.aspect=w/h;camera.updateProjectionMatrix();if(camMode==='wide')setCam('wide')}
 $('teleToggle').onclick=()=>{const c=$('telecard'),mini=c.classList.toggle('mini');$('teleToggle').textContent=mini?'ขยาย':'ย่อ';$('teleToggle').setAttribute('aria-expanded',!mini)};
-new ResizeObserver(resize).observe(stage); resize();
+new ResizeObserver(resize).observe(stage); addEventListener('resize',resize); resize();
 let last=performance.now(), teleT=0;
 function frame(now){
   const dt=Math.min((now-last)/1000,0.05); last=now; clock+=dt;

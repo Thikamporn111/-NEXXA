@@ -559,7 +559,7 @@ function updateTele(){
 /* ---------------- Camera modes ---------------- */
 let camMode='wide'; const camBtns={wide:$('camWide'),follow:$('camFollow'),top:$('camTop')};
 function setCam(m){camMode=m;Object.entries(camBtns).forEach(([k,b])=>b.setAttribute('aria-pressed',k===m));
-  if(m==='wide'){const tv=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),th=tv*camera.aspect,d=Math.max(8.6/th,6/tv);camera.position.set(0,d*0.64,d*0.77);controls.target.set(0,0,0)}
+  if(m==='wide'){const tv=Math.tan(THREE.MathUtils.degToRad(camera.fov/2)),th=tv*camera.aspect,d=Math.max(9.8/th,6.4/tv);camera.position.set(0,d*0.64,d*0.77);controls.target.set(0,0,0)}
   if(m==='top'){camera.position.set(0,17,0.01);controls.target.set(0,0,0)}
   if(m==='follow'){const p=R.group.position;controls.target.copy(p);camera.position.set(p.x+1.8,1.6,p.z+2.2)}}
 Object.entries(camBtns).forEach(([k,b])=>b.onclick=()=>setCam(k));
